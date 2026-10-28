@@ -1,0 +1,59 @@
+services:
+  db:
+    image: postgres:16.4
+    environment:
+      POSTGRES_USER: csm
+      POSTGRES_PASSWORD: csm
+      POSTGRES_DB: csm
+    ports:
+      - "5432:5432"
+    volumes:
+      - csm_pg:/var/lib/postgresql/data
+      # tạo thêm csm_test, csm_demo: kiểm thử và demo xóa sạch CSDL chúng dùng
+      - ./docker/initdb.sql:/docker-entrypoint-initdb.d/initdb.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U csm -d csm"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  api:
+    build: .
+    image: csm-app
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg://csm:csm@db:5432/csm
+      CSM_SCHEDULER: ${CSM_SCHEDULER:-off}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    ports:
+      - "8000:8000"
+    volumes:
+      - csm_data:/srv/data
+
+  # docker compose run --rm tests
+  tests:
+    image: csm-app
+    profiles: ["tools"]
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      CSM_PG_URL: postgresql+psycopg://csm:csm@db:5432/csm_test
+    command: ["python", "-m", "pytest", "-v"]
+
+  # docker compose run --rm demo
+  demo:
+    image: csm-app
+    profiles: ["tools"]
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      CSM_DEMO_DB_URL: postgresql+psycopg://csm:csm@db:5432/csm_demo
+    command: ["python", "-m", "scripts.demo"]
+
+volumes:
+  csm_pg:
+  csm_data:

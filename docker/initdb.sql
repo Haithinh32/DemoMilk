@@ -1,0 +1,2 @@
+CREATE DATABASE csm_test;
+CREATE DATABASE csm_demo;
