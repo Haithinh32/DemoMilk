@@ -71,6 +71,21 @@ async def bank_webhook(request: Request, x_signature: str | None = Header(defaul
     return await run_in_threadpool(_run)
 
 
+class SimTransferIn(BaseModel):
+    so_tai_khoan: str
+    so_tien: int
+    noi_dung: str
+
+
+@router.post("/bank/simulate")
+def bank_simulate(body: SimTransferIn, user: User = Depends(current_user)):
+    """CHỈ CHO DEMO: đóng vai ngân hàng chuyển khoản, xử lý như một báo có qua webhook."""
+    import uuid
+    with tx() as s:
+        return ledger.receive_bank_credit(s, {"ma_gd_ngan_hang": f"FT-SIM-{uuid.uuid4().hex[:10].upper()}",
+                                              **body.model_dump()})
+
+
 @router.get("/payments/pending")
 def pending(user: User = Depends(current_user)):
     with tx() as s:

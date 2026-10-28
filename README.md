@@ -9,7 +9,7 @@ chung (PH0)**, với cơ chế giao tiếp rõ ràng giữa các mô-đun và v�
 
 ## Chạy nhanh
 
-Hướng dẫn chi tiết từng bước (môi trường ảo, Swagger, PostgreSQL, agent, lỗi thường gặp): [HUONG_DAN_CAI_DAT.md](HUONG_DAN_CAI_DAT.md).
+Hướng dẫn chi tiết từng bước (môi trường ảo, Swagger, giao diện web, Docker, agent, lỗi thường gặp): [HUONG_DAN_CAI_DAT.md](HUONG_DAN_CAI_DAT.md).
 
 ```bash
 pip install -r requirements.txt
@@ -17,12 +17,13 @@ python -m app.seed                      # tạo data/csm.db và nạp dữ liệ
 uvicorn app.main:app --reload           # http://127.0.0.1:8000/docs
 python -m scripts.demo                  # kịch bản demo xuyên 4 phân hệ, in từng bước
 python -m pytest                        # 25 kiểm thử (1 kiểm thử PostgreSQL bị bỏ qua nếu không có CSM_PG_URL)
+cd web && npm install && npm run dev   # giao diện web ở http://localhost:5173 (cần server API ở cổng 8000)
 ```
 
-PostgreSQL (khóa dòng thật, đúng thiết kế):
+Toàn bộ bằng Docker, trên PostgreSQL (khóa dòng thật, đúng thiết kế):
 
 ```bash
-docker compose up -d --build            # PostgreSQL + API ở http://localhost:8000/docs
+docker compose up -d --build            # PostgreSQL + API (:8000/docs) + giao diện web (http://localhost:5173)
 docker compose run --rm tests           # 26 kiểm thử, gồm kiểm thử tranh chấp trên PostgreSQL
 docker compose run --rm demo            # kịch bản demo trên PostgreSQL
 ```
@@ -51,6 +52,7 @@ app/
   ph3_credit/     CN1 (contracts.py) · CN3 (ledger.py) · NC1 (scoring_nc1.py)
   ph4_sales/      CN1 (field.py) · CN5 (dashboard.py) · NC1 (suggest_nc1.py)
   jobs.py         đăng ký mọi tác vụ định kỳ    seed.py  dữ liệu mẫu
+web/             giao diện React (Vite): src/pages/ một file cho mỗi nhóm màn hình, gọi API qua /api
 ```
 
 Mỗi phân hệ **chỉ ghi bảng của mình** (Bảng 4.1) và chỉ gọi phân hệ khác qua `contracts.py` của phân hệ đó
@@ -136,7 +138,8 @@ tiền mặt (PH3 CN2), cấn trừ thu hồi (PH3 CN4), nhắc nợ (PH3 CN5), 
 - Bất thường check-in chấm theo luật (khoảng cách, ảnh trùng, lệch giờ, đồng bộ trễ), chưa có mô hình PH4 NC2.
 - Mỗi dòng đơn áp tối đa một KM (không cộng dồn).
 - Hội thoại agent lưu trong bộ nhớ; tạo bảng bằng `create_all`, chưa có Alembic.
-- Chưa kiểm thử trên PostgreSQL trong lần chạy này (máy chưa bật Docker); `test_concurrency_pg.py` đã viết sẵn.
+- Giao diện web là bản trình diễn: chưa có app di động ngoại tuyến cho NVBH (check-in dùng tọa độ giả lập),
+  chưa có SSO/OTP; nút *Mô phỏng: chuyển khoản* gọi `POST /ph3/bank/simulate` thay cho ngân hàng thật.
 
 ## Điều chỉnh so với báo cáo (đề nghị sửa báo cáo cho khớp)
 

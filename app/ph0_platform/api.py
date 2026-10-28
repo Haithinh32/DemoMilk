@@ -1,3 +1,4 @@
+from dataclasses import asdict
 from datetime import datetime
 
 from fastapi import APIRouter, Depends
@@ -8,14 +9,16 @@ from app import clock
 from app.db import tx
 from app.ph0_platform import agent, events, scheduler
 from app.ph0_platform.identity import ADMIN, BDH, User, current_user, require_role
-from app.ph0_platform.models import NhatKy, NhatKyAgent, SuKien, ThongBao
+from app.ph0_platform.models import NguoiDung, NhatKy, NhatKyAgent, SanPham, SuKien, ThongBao
 
 router = APIRouter(prefix="/ph0", tags=["PH0 – Nền tảng chung"])
 
 
 @router.get("/me")
 def me(user: User = Depends(current_user)):
-    return user
+    with tx() as s:
+        zalo_id = s.scalar(select(NguoiDung.zalo_id).where(NguoiDung.ma_nguoi_dung == user.ma))
+    return {**asdict(user), "zalo_id": zalo_id}
 
 
 @router.get("/events")
@@ -52,6 +55,13 @@ def run_job(ten: str, body: dict | None = None, user: User = Depends(current_use
 class ClockIn(BaseModel):
     dat_gio: datetime | None = None
     cong_phut: int | None = None
+
+
+@router.get("/products")
+def products(user: User = Depends(current_user)):
+    with tx() as s:
+        return [{"ma_sp": p.ma_sp, "ten": p.ten, "nhom_nhiet": p.nhom_nhiet, "so_ngay_han": p.so_ngay_han}
+                for p in s.scalars(select(SanPham).order_by(SanPham.ma_sp))]
 
 
 @router.get("/clock")

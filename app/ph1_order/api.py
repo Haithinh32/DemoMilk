@@ -2,9 +2,12 @@ from datetime import date
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 
 from app.db import tx
 from app.ph0_platform.identity import User, current_user
+from app.ph0_platform.identity import DIEM_BAN
+from app.ph1_order.models import ChuongTrinhKM, DonBoSung, DonNhap
 from app.ph1_order import promo, promo_nc1, service
 
 router = APIRouter(prefix="/ph1", tags=["PH1 – Đặt hàng B2B, Giá – KM"])
@@ -88,6 +91,16 @@ def cancel(ma_don: str, body: CancelIn, user: User = Depends(current_user)):
         return {"trang_thai": service.cancel_order(s, user, ma_don, body.ly_do)}
 
 
+@router.get("/agent-drafts")
+def agent_drafts(user: User = Depends(current_user)):
+    """Đơn nháp agent Zalo đã tạo cho điểm bán, chờ xác nhận."""
+    with tx() as s:
+        q = select(DonNhap).order_by(DonNhap.han.desc()).limit(20)
+        q = q.where(DonNhap.ma_diem_ban == (user.ma_diem_ban if user.vai_tro == DIEM_BAN else None))
+        return [{"ma_nhap": d.ma_nhap, "dong": d.dong, "han": d.han, "trang_thai": d.trang_thai, "ma_don": d.ma_don}
+                for d in s.scalars(q)]
+
+
 @router.post("/agent-drafts/{ma_nhap}/confirm")
 def confirm_draft(ma_nhap: str, user: User = Depends(current_user)):
     return service.confirm_agent_draft(user, ma_nhap)
@@ -104,6 +117,18 @@ class PromoIn(BaseModel):
     tu_ngay: date
     den_ngay: date
     ngan_sach: int
+
+
+@router.get("/promotions")
+def list_promos(user: User = Depends(current_user)):
+    with tx() as s:
+        q = select(ChuongTrinhKM).order_by(ChuongTrinhKM.tu_ngay.desc()).limit(200)
+        if not user.cap_cong_ty:
+            q = q.where((ChuongTrinhKM.ma_npp.is_(None)) | (ChuongTrinhKM.ma_npp == user.ma_npp))
+        return [{"ma_km": k.ma_km, "ten": k.ten, "ma_sp": k.ma_sp, "muc_giam": k.muc_giam,
+                 "muc_giam_theo_don_vi": k.muc_giam_theo_don_vi, "ma_npp": k.ma_npp, "tu_ngay": k.tu_ngay,
+                 "den_ngay": k.den_ngay, "ngan_sach": k.ngan_sach, "da_dung": k.da_dung, "trang_thai": k.trang_thai,
+                 "nguon": k.nguon} for k in s.scalars(q)]
 
 
 @router.post("/promotions")
@@ -152,6 +177,16 @@ def nc1_evaluate(ma_km: str, user: User = Depends(current_user)):
 
 class ReplenishIn(BaseModel):
     dieu_chinh: dict[str, dict] = {}
+
+
+@router.get("/replenishment")
+def list_replenishment(user: User = Depends(current_user)):
+    with tx() as s:
+        q = select(DonBoSung).order_by(DonBoSung.ngay.desc()).limit(100)
+        if not user.cap_cong_ty:
+            q = q.where(DonBoSung.ma_npp == user.ma_npp)
+        return [{"ma_don_bs": d.ma_don_bs, "ma_npp": d.ma_npp, "ma_kho": d.ma_kho, "ngay": d.ngay,
+                 "trang_thai": d.trang_thai, "dong": d.dong} for d in s.scalars(q)]
 
 
 @router.post("/replenishment/{ma_don_bs}/submit")

@@ -1,11 +1,14 @@
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select
 
+from app import clock, config
 from app.db import tx
 from app.ph0_platform.identity import User, check_npp, current_user
+from app.ph0_platform.models import SanPham
 from app.ph2_inventory import contracts, recall, service
-from app.ph2_inventory.models import DeXuatDieuChuyen, Kho, NhiemVuThuHoi, PhieuXuat
+from app.ph2_inventory.forecast_nc2 import _yellow_days
+from app.ph2_inventory.models import DeXuatDieuChuyen, Kho, LoHang, NhiemVuThuHoi, PhieuXuat, TonKhoLo, VuThuHoi
 
 router = APIRouter(prefix="/ph2", tags=["PH2 – Kho theo lô, Giao hàng"])
 
@@ -90,6 +93,33 @@ def confirm_delivery(ma_phieu: str, body: DeliveryIn, user: User = Depends(curre
 
 class LockIn(BaseModel):
     ly_do: str
+
+
+@router.get("/lots")
+def lots(user: User = Depends(current_user)):
+    """Danh sách lô còn tồn, kèm màu theo hạn dùng: đỏ (< 3 ngày), vàng (NC2), xanh."""
+    today = clock.today()
+    with tx() as s:
+        q = (select(LoHang, SanPham, TonKhoLo.ma_kho, func.sum(TonKhoLo.so_luong))
+             .join(SanPham, SanPham.ma_sp == LoHang.ma_sp).join(TonKhoLo, TonKhoLo.ma_lo == LoHang.ma_lo)
+             .group_by(LoHang.ma_lo, SanPham.ma_sp, TonKhoLo.ma_kho).order_by(LoHang.hsd))
+        if not user.cap_cong_ty:
+            q = q.join(Kho, Kho.ma_kho == TonKhoLo.ma_kho).where(Kho.ma_npp == user.ma_npp)
+        out = []
+        for lo, sp, ma_kho, sl in s.execute(q):
+            con = (lo.hsd - today).days
+            mau = "do" if con < config.SO_NGAY_LO_DO else "vang" if con <= _yellow_days(sp) else "xanh"
+            out.append({"ma_lo": lo.ma_lo, "ma_sp": lo.ma_sp, "ten_sp": sp.ten, "ma_kho": ma_kho, "so_luong": int(sl),
+                        "nsx": lo.nsx, "hsd": lo.hsd, "con_ngay": con, "mau": mau, "trang_thai": lo.trang_thai,
+                        "ly_do_khoa": lo.ly_do_khoa})
+        return out
+
+
+@router.get("/recalls")
+def recalls(user: User = Depends(current_user)):
+    with tx() as s:
+        return [{"ma_vu": v.ma_vu, "ma_lo": v.ma_lo, "ly_do": v.ly_do, "trang_thai": v.trang_thai}
+                for v in s.scalars(select(VuThuHoi).order_by(VuThuHoi.ma_vu.desc()).limit(50))]
 
 
 @router.post("/lots/{ma_lo}/lock")

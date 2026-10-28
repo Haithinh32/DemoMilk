@@ -32,6 +32,13 @@ services:
     volumes:
       - csm_data:/srv/data
 
+  web:
+    build: ./web
+    depends_on:
+      - api
+    ports:
+      - "5173:80"
+
   # docker compose run --rm tests
   tests:
     image: csm-app

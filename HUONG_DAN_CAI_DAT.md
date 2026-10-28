@@ -9,10 +9,11 @@ Kiến trúc, danh sách sự kiện và bảng chức năng ↔ kiểm thử xe
 |---|---|---|
 | Python | 3.11 trở lên (đã thử với 3.12) | Có |
 | Git | bất kỳ | Có |
-| Docker Desktop | bất kỳ | Chỉ khi chạy bằng Docker (mục 7) – khi đó không cần Python |
+| Node.js | 20 trở lên | Chỉ khi chạy giao diện web trên máy (mục 7) |
+| Docker Desktop | bất kỳ | Chỉ khi chạy bằng Docker (mục 8) – khi đó không cần Python, Node |
 | Khóa API Anthropic | – | Chỉ khi thử agent Zalo |
 
-Kiểm tra: `python --version`. Nếu máy có nhiều bản Python, trên Windows dùng `py -3.12` thay cho `python` ở bước 2.
+Kiểm tra: `python --version`, `node --version`. Nếu máy có nhiều bản Python, trên Windows dùng `py -3.12` thay cho `python` ở bước 2.
 
 ## 2. Cài đặt
 
@@ -45,7 +46,7 @@ Chạy lại lệnh này bất cứ lúc nào để **xóa sạch** và nạp l�
 python -m pytest
 ```
 
-Kết quả mong đợi: `25 passed, 1 skipped`. Kiểm thử bị bỏ qua là kiểm thử tranh chấp trên PostgreSQL (mục 7).
+Kết quả mong đợi: `25 passed, 1 skipped`. Kiểm thử bị bỏ qua là kiểm thử tranh chấp trên PostgreSQL (mục 8).
 Chạy riêng một nhóm: `python -m pytest tests/test_order_to_cash.py -v`.
 
 ## 5. Chạy kịch bản demo
@@ -107,22 +108,65 @@ Ghi chú:
 - Tác vụ định kỳ mặc định **tắt**; chạy tay bằng endpoint ở trên, hoặc bật tự chạy bằng
   `$env:CSM_SCHEDULER="on"` trước khi gọi `uvicorn`.
 
-## 7. Chạy toàn bộ bằng Docker (PostgreSQL)
+## 7. Giao diện web
+
+Giao diện React (thư mục `web/`) gọi đúng các API ở mục 6, mỗi vai trò thấy các màn hình của mình.
+Cần server API đang chạy ở cổng 8000 (mục 6). Mở terminal **thứ hai**:
+
+```powershell
+cd web
+npm install          # lần đầu
+npm run dev          # http://localhost:5173
+```
+
+Trang đầu là danh sách tài khoản demo; bấm một thẻ để đăng nhập, đổi vai trò bằng ô chọn ở góc trên bên phải.
+Trình duyệt gọi `/api/...`, Vite chuyển tiếp sang `http://127.0.0.1:8000` (đổi bằng biến `CSM_API_URL` nếu server ở chỗ khác).
+
+| Vai trò | Màn hình |
+|---|---|
+| Điểm bán | Đặt hàng (kèm đơn gợi ý), Đơn hàng, Công nợ & thanh toán VietQR, Zalo OA |
+| NV bán hàng | Tuyến hôm nay (check-in, thu nợ, đặt hộ), Đơn hàng |
+| Chủ NPP | Đơn hàng (duyệt ngoại lệ), Đơn bổ sung, Lô hàng, Dashboard |
+| Thủ kho | Soạn & xuất kho (quét lô FEFO), Lô hàng, Nhận hàng thu hồi |
+| NV giao hàng | Giao hàng (bằng chứng), Thu tiền mặt |
+| Kế toán / KT trưởng / thủ quỹ | Báo có chờ xử lý, Ngoại lệ tín dụng, Đối soát & khóa sổ, Chấm điểm tín dụng, Nhận nộp quỹ |
+| Phòng KD / GĐKD | Chương trình KM (lập / duyệt), Đề xuất & đánh giá KM, Đơn bổ sung, Điều chuyển lô vàng, Dashboard |
+| QA | Lô hàng (khóa, mở khóa, truy xuất, thu hồi), Vụ thu hồi |
+| Ban điều hành | Dashboard KPI |
+| Quản trị | Hệ thống: đồng hồ, tác vụ định kỳ, bus sự kiện, thông báo, nhật ký |
+
+Kịch bản trình diễn gợi ý (dữ liệu vừa nạp ở mục 3):
+
+1. **Quản trị** → Hệ thống: bấm *Đặt* (09:00), chạy `ph4.nc1_goi_y_don`.
+2. **Điểm bán DB-01-001** → Đặt hàng: *Dùng đơn gợi ý*, sửa số thùng, *Đặt hàng* → đơn được duyệt tự động.
+3. **Thủ kho** → Soạn & xuất kho: chọn phiếu, *Quét* từng dòng, *Xác nhận xuất kho*.
+4. **NV giao hàng** → Giao hàng: *Xác nhận đã giao* (xóa ô ảnh để thấy hệ thống chặn khi thiếu bằng chứng).
+5. **Điểm bán DB-01-001** → Công nợ: chọn hóa đơn, *Mô phỏng: chuyển khoản* → gạch nợ tự động, điểm thưởng tăng.
+6. **Kế toán trưởng** → Đối soát: *Khóa sổ ngày*.
+7. Nhánh khác: DB-01-003 đặt 20 thùng SP01 (vượt hạn mức) → xin ngoại lệ → kế toán trưởng duyệt;
+   QA khóa lô LSP01K01B → phiếu soạn mới tự đề xuất lô khác; phòng KD tính đề xuất KM cho SP03.
+8. **Ban điều hành** → Dashboard; **Quản trị** → Hệ thống → Bus sự kiện để xem các sự kiện vừa đi qua.
+
+Nút *Mô phỏng: chuyển khoản* đóng vai ngân hàng (endpoint `POST /ph3/bank/simulate`, chỉ dùng cho demo) vì
+trình duyệt không giữ khóa ký webhook ngân hàng.
+
+## 8. Chạy toàn bộ bằng Docker (PostgreSQL)
 
 Không cần cài Python, chỉ cần Docker Desktop đang chạy. Mọi thứ chạy trên PostgreSQL, đúng thiết kế (khóa dòng thật).
 
 ```powershell
-docker compose up -d --build      # PostgreSQL + server API, lần đầu tự nạp dữ liệu mẫu
+docker compose up -d --build      # PostgreSQL + server API + giao diện web, lần đầu tự nạp dữ liệu mẫu
 docker compose run --rm tests     # 26 kiểm thử, gồm kiểm thử tranh chấp trên PostgreSQL
 docker compose run --rm demo      # kịch bản demo xuyên 4 phân hệ
 ```
 
-Server ở <http://localhost:8000/docs>, dùng như mục 6. Các dịch vụ:
+Giao diện web ở <http://localhost:5173> (như mục 7), API ở <http://localhost:8000/docs> (như mục 6). Các dịch vụ:
 
 | Dịch vụ | Việc | CSDL |
 |---|---|---|
 | `db` | PostgreSQL 16, mở cổng 5432 (user/mật khẩu `csm`/`csm`) | – |
 | `api` | Nạp dữ liệu mẫu nếu CSDL trống, rồi chạy server ở cổng 8000 | `csm` |
+| `web` | nginx phục vụ giao diện đã build ở cổng 5173, chuyển `/api/` sang `api` | – |
 | `tests` | Chạy `pytest` | `csm_test` |
 | `demo` | Chạy `scripts.demo` | `csm_demo` |
 
@@ -159,7 +203,7 @@ uvicorn app.main:app
 
 Quay lại SQLite: `Remove-Item Env:DATABASE_URL` (hoặc mở terminal mới).
 
-## 8. (Tùy chọn) Agent Zalo
+## 9. (Tùy chọn) Agent Zalo
 
 ```powershell
 python -m pip install anthropic
@@ -177,7 +221,7 @@ Invoke-RestMethod http://127.0.0.1:8000/ph0/agent/zalo -Method Post -ContentType
 Chưa có khóa API thì endpoint trả lỗi 503 kèm lý do. Các công cụ của agent vẫn thử được mà không cần khóa:
 `POST /ph0/agent/tools/xem_cong_no?zalo_id=zalo-01-001` với body `{}`.
 
-## 9. Biến môi trường
+## 10. Biến môi trường
 
 | Biến | Mặc định | Ý nghĩa |
 |---|---|---|
@@ -190,7 +234,7 @@ Chưa có khóa API thì endpoint trả lỗi 503 kèm lý do. Các công cụ c
 | `CSM_PG_URL` | – | Có giá trị thì chạy kiểm thử PostgreSQL |
 | `CSM_DEMO_DB_URL` | SQLite `data/demo/demo.db` | CSDL cho `scripts.demo` |
 
-## 10. Lỗi thường gặp
+## 11. Lỗi thường gặp
 
 | Hiện tượng | Cách xử lý |
 |---|---|
@@ -198,7 +242,9 @@ Chưa có khóa API thì endpoint trả lỗi 503 kèm lý do. Các công cụ c
 | `ModuleNotFoundError` cho fastapi, sklearn… | Chưa kích hoạt `.venv` hoặc chưa cài `requirements.txt` |
 | `UnicodeEncodeError` khi in tiếng Việt | `$env:PYTHONIOENCODING="utf-8"` rồi chạy lại |
 | `no such table` khi gọi API | Chưa chạy `python -m app.seed` |
-| Cổng 8000 đã bị dùng | `uvicorn app.main:app --port 8001` |
+| Cổng 8000 đã bị dùng | `uvicorn app.main:app --port 8001`, rồi chạy web với `$env:CSM_API_URL="http://127.0.0.1:8001"` |
+| Giao diện báo `[LOI]` hoặc 502 ngay sau khi bật Docker | Server đang nạp dữ liệu mẫu, chờ vài giây rồi tải lại |
+| Muốn bắt đầu demo lại từ đầu | `python -m app.seed` (Docker: `docker compose exec api python -m app.seed`), rồi tải lại trang |
 | `401` / `403` | Thiếu header `Authorization` hoặc token không đúng vai trò |
 | `404` khi xem dữ liệu NPP/điểm bán khác | Đúng thiết kế: dữ liệu được cô lập theo NPP |
 | `failed to connect to the docker API` | Docker Desktop chưa chạy; mở Docker Desktop, chờ báo *Engine running* |
